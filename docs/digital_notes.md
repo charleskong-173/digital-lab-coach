@@ -12,26 +12,34 @@ Last updated: [2026/5/14]
 - Two main children: `<visualElements>` (components), `<wires>` (connections)
 - Wires are geometric (p1, p2 coordinates), not pin-typed — must match endpoints to component pin positions
 - Subcircuits referenced as `<elementName>filename.dig</elementName>`
+- `<version>2</version>` is the current `.dig` format version
+- `<measurementOrdering/>` appears (empty) at the end of every file
 
 ### Element types I've encountered
 
 | Element name | Purpose | Notes |
 |---|---|---|
-| And, Or, XOr, Not | Basic gates | Has `Bits` attribute |
-| In, Out | Circuit I/O pins | Has `Label` attribute |
+| And, Or, XOr, Not | Basic gates | `Not` is single-input. Optional `Bits` attribute (default 1). `wideShape` boolean is cosmetic only |
+| In, Out | Circuit I/O pins | Has `Label`. `Bits` attribute optional (absent = 1 bit) |
 | Multiplexer | Mux | Has `Selector Bits` attribute |
-| Splitter | Bus split/merge | Has `Input Splitting`, `Output Splitting` |
-| Tunnel | Named net | Wires sharing label name are electrically connected |
+| Splitter | Bus split/merge | `Input Splitting` / `Output Splitting` are comma-separated strings (e.g. "4" → "1,1,1,1") |
+| Tunnel | Named net | Attribute is `NetName`. Tunnels sharing a NetName are electrically connected. Can have `rotation` |
 | ROM | Read-only memory | Has `Bits` (data width), `AddrBits` (address width) |
 | Register | Sequential register | Has `Bits`, optional `isProgramCounter` |
 | Const | Constant value | Has `Value`, `Bits` |
-| Comparator | Bit comparison | Has `Signed` attribute |
+| Comparator | Bit comparison | Has `Signed`, `Bits` attributes |
 | Add | Adder | Has `Bits` |
 | BitExtender | Sign extension | |
-| Clock | Clock signal | |
-| Testcase | Embedded test cases | Contains `<dataString>` for test data |
+| Clock | Clock signal | No attributes in basic use |
+| Testcase | Embedded test cases | Contains `<testData>` → `<dataString>` for test data |
 
-### Quirks and gotchas
+### Wires
+
+- A `<wire>` has exactly two endpoints: `<p1>` and `<p2>`, each with x/y coordinates
+- Wires carry NO pin or signal-type information — pure geometry
+- Connectivity is INFERRED: wires sharing an endpoint coordinate form a net
+- Wires can be diagonal (Digital allows it) — not inherently an error
+- Real bug patterns: miswire (connected to wrong pin, usually surfaces as failed tests), dangling wire (endpoint connects to nothing)
 
 ## Digital UI Features Relevant to Students
 
@@ -54,7 +62,7 @@ the analyzer skip unrecognized components and the LLM describe them
 generically, while keeping the parser future-proof for new labs.
 
 Known-and-semantically-supported (initial target):
-And, Or, XOr, Not, NAnd, NOr, In, Out, Multiplexer, Splitter, Tunnel,
+Wire, And, Or, XOr, Not, NAnd, NOr, In, Out, Multiplexer, Splitter, Tunnel,
 ROM, RAM, Register, Const, Comparator, Add, BitExtender, Clock,
 Testcase, PriorityEncoder
 
@@ -73,10 +81,8 @@ VHDL/Verilog wrappers, GAL/JEDEC-specific elements
 - A circuit referencing `alu.dig` means Digital looks for `alu.dig` in the same directory or library path
 - For our parser: must recursively load referenced subcircuits to fully analyze a top-level circuit
 
----
+## Open Questions under investigation
 
-## Open Questions
-
-- How does Digital handle missing subcircuit files? (Investigate)
-- Does Digital's CLI mode produce structured output (JSON?) or only human-readable text? (Investigate)
-- Where exactly does Java plugin API expose hooks for adding analysis panels? (Path 3 question, defer)
+- How does Digital handle missing subcircuit files? (Investigating)
+- Does Digital's CLI mode produce structured output (JSON?) or only human-readable text? (Investigating)
+- Where exactly does Java plugin API expose hooks for adding analysis panels? (Path 3 question, defer investigation)
