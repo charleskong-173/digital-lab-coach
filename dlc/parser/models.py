@@ -69,7 +69,7 @@ class Circuit:
 
     Fields:
       components: every visual element in the file.
-      wires:      every wire segment.
+      wires: every wire segment.
       source_path: where this circuit was loaded from.
       format_version: the <version> value from the .dig file.
     """

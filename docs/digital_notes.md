@@ -36,9 +36,9 @@ Last updated: [2026/5/14]
 ### Wires
 
 - A `<wire>` has exactly two endpoints: `<p1>` and `<p2>`, each with x/y coordinates
-- Wires carry NO pin or signal-type information — pure geometry
+- Wires carry NO pin or signal-type information 
 - Connectivity is INFERRED: wires sharing an endpoint coordinate form a net
-- Wires can be diagonal (Digital allows it) — not inherently an error
+- Wires can be diagonal, being diagnoal split the wire into two wires 
 - Real bug patterns: miswire (connected to wrong pin, usually surfaces as failed tests), dangling wire (endpoint connects to nothing)
 
 ## Digital UI Features Relevant to Students

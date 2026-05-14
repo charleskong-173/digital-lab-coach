@@ -12,10 +12,6 @@ def _parse_attributes(element_attributes) -> dict:
     """
     Convert a <elementAttributes> XML block into a plain Python dict.
 
-    Digital stores attributes as a list of <entry> blocks, each containing
-    a <string> key followed by a value element whose TAG tells us the type:
-      <int>, <long>, <boolean>, <string>, etc.
-
     Example XML:
       <elementAttributes>
         <entry>
@@ -38,19 +34,13 @@ def _parse_attributes(element_attributes) -> dict:
 
     for entry in element_attributes.findall("entry"):
         children = list(entry)
-        # An entry must have at least a key; most have key + value.
         if len(children) < 2:
             continue
-
         key_element = children[0]
         value_element = children[1]
-
-        # The key is always a <string>.
         key = key_element.text
         if key is None:
             continue
-
-        # The value's type is its tag name.
         value_tag = value_element.tag
         value_text = value_element.text
 
@@ -62,7 +52,7 @@ def _parse_attributes(element_attributes) -> dict:
             value = value_text if value_text is not None else ""
         else:
             # Unknown value type (e.g. <rotation>, <testData>, <shape>).
-            # Keep the raw text so nothing is lost; checkers can ignore it.
+            # Keep the raw text so nothing is lost;
             value = value_text if value_text is not None else value_tag
 
         attributes[key] = value
@@ -77,7 +67,7 @@ def _parse_position(element) -> Position:
     """
     pos = element.find("pos")
     if pos is None:
-        # Shouldn't happen in valid files, but fail loud rather than guess.
+        # Won't possibly happen
         raise ValueError("Element missing <pos> tag")
     x = int(pos.get("x"))
     y = int(pos.get("y"))
@@ -85,7 +75,6 @@ def _parse_position(element) -> Position:
 
 
 def _parse_component(visual_element) -> Component:
-    """Turn one <visualElement> block into a Component object."""
     element_name = visual_element.findtext("elementName")
     if element_name is None:
         raise ValueError("visualElement missing <elementName>")
@@ -105,7 +94,6 @@ def _parse_component(visual_element) -> Component:
 def _parse_wire(wire_element) -> Wire:
     """
     Turn one <wire> block into a Wire object.
-    A wire has two endpoints: <p1 x.. y..> and <p2 x.. y..>.
     """
     p1 = wire_element.find("p1")
     p2 = wire_element.find("p2")
@@ -133,7 +121,6 @@ def parse_dig_file(path: str) -> Circuit:
     if root.tag != "circuit":
         raise ValueError(f"Expected root <circuit>, got <{root.tag}>")
 
-    # Format version (e.g. <version>2</version>).
     version_text = root.findtext("version")
     format_version = int(version_text) if version_text is not None else None
 
