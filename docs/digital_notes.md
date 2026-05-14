@@ -31,15 +31,29 @@ Last updated: [2026/5/14]
 | Add | Adder | Has `Bits` |
 | BitExtender | Sign extension | |
 | Clock | Clock signal | No attributes in basic use |
-| Testcase | Embedded test cases | Contains `<testData>` → `<dataString>` for test data |
+| Testcase | Embedded test cases | Contains `<testData>` → `<dataString>` for test data, default name <string>Testdata</string>|
 
 ### Wires
 
 - A `<wire>` has exactly two endpoints: `<p1>` and `<p2>`, each with x/y coordinates
+
 - Wires carry NO pin or signal-type information 
+
 - Connectivity is INFERRED: wires sharing an endpoint coordinate form a net
-- Wires can be diagonal, being diagnoal split the wire into two wires 
-- Real bug patterns: miswire (connected to wrong pin, usually surfaces as failed tests), dangling wire (endpoint connects to nothing)
+
+- Each <wire> is one straight segment between two points (may be horizontal, vertical, or diagonal).
+
+- A visual corner is NOT one bent wire — it's two separate <wire> segments sharing an endpoint coordinate. An L-path = 2 wires, a path with 2 turns = 3 wires, etc.
+
+- A wire branch point (shown as a dot) can land on the MIDDLE of another wire,
+  not just at its endpoint. When it does, Digital treats the original wire as
+  split into two segments at that point. Additional branches on the same wire
+  split it further. Net-building must therefore treat any shared coordinate —
+  not just endpoints — as a potential connection point.
+
+- Connectivity (nets) is reconstructed by grouping wires that share endpoint coordinates.
+
+- Real bug patterns: miswire (connected to wrong pin, usually surfaces as failed tests), dangling wire (endpoint connects to nothing), Multiple drivers on one net (two outputs feeding the same wire) is also a real bug but Digital does NOT flag it on load. The error only surfaces at simulation time, and only when a signal actually travels through the conflicted net.
 
 ## Digital UI Features Relevant to Students
 
