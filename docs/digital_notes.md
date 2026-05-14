@@ -55,20 +55,20 @@ Last updated: [2026/5/14]
 ## Parser scope policy
 
 DLC's parser aims to **semantically understand** elements used in
-COMP 311 labs (all semesters). Other elements (transistor primitives,
+COMP 311 labs so far. Other elements (transistor primitives,
 FPGA-specific blocks, FSM editor outputs, etc.) are parsed structurally
-but treated as opaque `UnknownComponent` with named pins. This lets
+but treated as opaque `UnknownComponent` with named pins for now. This lets
 the analyzer skip unrecognized components and the LLM describe them
 generically, while keeping the parser future-proof for new labs.
 
 Known-and-semantically-supported (initial target):
-Wire, And, Or, XOr, Not, NAnd, NOr, In, Out, Multiplexer, Splitter, Tunnel,
+Wire, And, Or, XOr, Not, NAnd, NOr, XNOr, In, Out, Multiplexer, Splitter, Tunnel,
 ROM, RAM, Register, Const, Comparator, Add, BitExtender, Clock,
-Testcase, PriorityEncoder
+Testcase, PriorityEncoder, Decoder
 
-Out of initial scope (parsed but opaque):
+Out of initial scope (parsed but opaque, may be added in later development):
 all transistor-level elements, FSM elements, FPGA-board-specific blocks,
-VHDL/Verilog wrappers, GAL/JEDEC-specific elements
+Verilog wrappers, GAL/JEDEC-specific elements
 
 ## CLI Mode (what the autograder uses)
 
