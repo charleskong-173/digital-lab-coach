@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Secrets (CRITICAL)
+.env
+.env.*
+!.env.example
+*.key
+api_keys/
+secrets/
+
+# Student data (Never Commit)
+student_data/
+*_anonymous.dig
+spring2026_archive/
+ta_archive/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Build artifacts
+dist/
+build/
