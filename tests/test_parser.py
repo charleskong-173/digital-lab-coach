@@ -186,3 +186,87 @@ def test_malformed_xml_raises(tmp_path):
     bad.write_text("<circuit><not closed properly")
     with pytest.raises(Exception):
         parse_dig_file(str(bad))
+
+
+# -------------------------------------------------------------------
+# Tier 2 — subcircuit resolution tests
+# -------------------------------------------------------------------
+
+TIER2_DIR = Path(__file__).parent.parent / "data" / "sample_circuits" / "tier2_structured"
+
+
+def _load_tier2(name: str) -> Circuit:
+    return parse_dig_file(str(TIER2_DIR / name))
+
+
+def test_subcircuit_inner_standalone():
+    """The leaf subcircuit is itself a normal flat circuit"""
+    c = _load_tier2("subcircuit_inner.dig")
+    assert len(c.inputs()) == 2
+    assert len(c.outputs()) == 1
+    assert len(c.subcircuits) == 0  
+
+    assert {inp.label for inp in c.inputs()} == {"A", "B"}
+    assert {out.label for out in c.outputs()} == {"Y"}
+
+
+def test_uses_subcircuit_single():
+    """uses_subcircuit.dig references subcircuit_inner.dig exactly once."""
+    c = _load_tier2("uses_subcircuit.dig")
+
+    assert {inp.label for inp in c.inputs()} == {"X", "Z"}
+    assert {out.label for out in c.outputs()} == {"Out"}
+    assert len(c.subcircuits) == 1
+    sub = c.subcircuits[0]
+    assert sub.reference == "subcircuit_inner.dig"
+    assert sub.resolved_path is not None
+    assert sub.resolution_error is None
+    assert sub.child_circuit is not None
+
+    child = sub.child_circuit
+    assert {inp.label for inp in child.inputs()} == {"A", "B"}
+    assert {out.label for out in child.outputs()} == {"Y"}
+
+
+def test_two_subcircuits_share_one_child():
+    """Two references to the same .dig should share the same child Circuit object (cache hit)."""
+    c = _load_tier2("two_subcircuits.dig")
+
+    assert len(c.subcircuits) == 2
+    s1, s2 = c.subcircuits
+
+    assert s1.reference == "subcircuit_inner.dig"
+    assert s2.reference == "subcircuit_inner.dig"
+    assert s1.resolution_error is None
+    assert s2.resolution_error is None
+
+    assert s1.child_circuit is s2.child_circuit
+
+
+def test_subcircuit_components_helper():
+    """The convenience method should return only .dig-reference components."""
+    c = _load_tier2("two_subcircuits.dig")
+    subs = c.subcircuit_components()
+    assert len(subs) == 2
+    for s in subs:
+        assert s.element_name.endswith(".dig")
+
+
+def test_missing_subcircuit_recorded_not_crashed(tmp_path):
+    """If a parent references a missing file, parsing succeeds with an error logged."""
+    parent = tmp_path / "parent.dig"
+    parent.write_text(
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<circuit><version>2</version><attributes/>'
+        '<visualElements>'
+        '<visualElement><elementName>missing.dig</elementName>'
+        '<elementAttributes/><pos x="0" y="0"/></visualElement>'
+        '</visualElements><wires/></circuit>'
+    )
+
+    c = parse_dig_file(str(parent))
+    assert len(c.subcircuits) == 1
+    sub = c.subcircuits[0]
+    assert sub.child_circuit is None
+    assert sub.resolution_error is not None
+    assert "not found" in sub.resolution_error.lower()

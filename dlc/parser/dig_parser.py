@@ -1,11 +1,17 @@
 """
 Parser: reads a .dig XML file and produces a Circuit object.
-This stage handles ONLY components, attributes, and wire segments. 
-This stage does NOT infer connectivity or nets.
-"""
 
+Handles:
+  - Components and wires from the file's literal XML.
+  - Subcircuit references: when a component's element_name ends in .dig,
+    the referenced file is recursively loaded from the parent's folder.
+
+Caches resolved subcircuits in a single parse session to avoid re-parsing
+the same file twice and to detect circular references.
+"""
+from pathlib import Path
 from lxml import etree
-from dlc.parser.models import Circuit, Component, Wire, Position
+from dlc.parser.models import Circuit, Component, SubcircuitReference, Wire, Position
 
 
 def _parse_attributes(element_attributes) -> dict:
@@ -108,13 +114,52 @@ def _parse_wire(wire_element) -> Wire:
 
 def parse_dig_file(path: str) -> Circuit:
     """
-    Main entry point: read a .dig file from disk, return a Circuit object.
+    Public entry point: parse a .dig file (and any subcircuits it references).
 
-    Raises:
-      FileNotFoundError if the path doesn't exist.
-      etree.XMLSyntaxError if the file isn't valid XML.
-      ValueError if the XML is valid but missing expected structure.
+    Subcircuits are resolved relative to the parent file's folder.
+    Each parse session uses its own cache, so the same subcircuit referenced
+    multiple times is loaded only once, and circular references are detected.
     """
+
+    cache: dict[str, Circuit] = {}
+    in_progress: set[str] = set()
+    return _parse_with_cache(path, cache, in_progress)
+
+def _parse_with_cache(
+    path: str,
+    cache: dict[str, Circuit],
+    in_progress: set[str],
+) -> Circuit:
+    """
+    Internal recursive parser. Maintains:
+      cache:       absolute_path -> already-parsed Circuit
+      in_progress: absolute_paths currently being parsed (for cycle detection)
+    """
+    abs_path = str(Path(path).resolve())
+
+    # Cycle detection: if we're already parsing this file higher up the stack,
+    if abs_path in in_progress:
+        raise ValueError(f"Circular subcircuit reference: {abs_path}")
+
+    if abs_path in cache:
+        return cache[abs_path]
+
+    in_progress.add(abs_path)
+    try:
+        circuit = _parse_one_file(path, cache, in_progress)
+    finally:
+        in_progress.discard(abs_path)
+
+    cache[abs_path] = circuit
+    return circuit
+
+
+def _parse_one_file(
+    path: str,
+    cache: dict[str, Circuit],
+    in_progress: set[str],
+) -> Circuit:
+    """Parse a single .dig file and recursively resolve any subcircuit references it contains."""
     tree = etree.parse(path)
     root = tree.getroot()
 
@@ -124,23 +169,51 @@ def parse_dig_file(path: str) -> Circuit:
     version_text = root.findtext("version")
     format_version = int(version_text) if version_text is not None else None
 
-    # Parse all components under <visualElements>.
-    components = []
+    components: list[Component] = []
     visual_elements = root.find("visualElements")
     if visual_elements is not None:
         for ve in visual_elements.findall("visualElement"):
             components.append(_parse_component(ve))
 
-    # Parse all wires under <wires>.
-    wires = []
+    wires: list[Wire] = []
     wires_block = root.find("wires")
     if wires_block is not None:
         for w in wires_block.findall("wire"):
             wires.append(_parse_wire(w))
-
-    return Circuit(
+ 
+    circuit = Circuit(
         components=components,
         wires=wires,
         source_path=path,
         format_version=format_version,
+        subcircuits=[],
     )
+
+    # Resolve subcircuit references. They are components whose element_name
+    # ends in ".dig". Their file is expected to live in the same folder as
+    # the parent.
+    parent_dir = Path(path).parent
+    for comp in components:
+        if not comp.element_name.endswith(".dig"):
+            continue
+
+        ref = comp.element_name
+        child_path = parent_dir / ref
+
+        sub_ref = SubcircuitReference(
+            reference=ref,
+            parent_component=comp,
+            resolved_path=str(child_path.resolve()) if child_path.exists() else None,
+        )
+
+        if not child_path.exists():
+            sub_ref.resolution_error = f"Referenced file not found: {child_path}"
+        else:
+            try:
+                child = _parse_with_cache(str(child_path), cache, in_progress)
+                sub_ref.child_circuit = child
+            except Exception as e:
+                # Record the error and continue. Higher layers can surface it.
+                sub_ref.resolution_error = f"{type(e).__name__}: {e}"
+        circuit.subcircuits.append(sub_ref)
+    return circuit
