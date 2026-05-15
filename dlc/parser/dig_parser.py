@@ -153,6 +153,53 @@ def _parse_with_cache(
     cache[abs_path] = circuit
     return circuit
 
+def _resolve_subcircuit_path(parent_dir: Path, reference: str) -> tuple[str | None, str | None]:
+    """
+    Find a referenced .dig file under the parent's folder tree.
+
+    Digital stores the reference as a bare filename (e.g. "alu.dig") even when
+    the file lives in a subfolder. So we search:
+      1. Directly in parent_dir.
+      2. Recursively in subfolders of parent_dir with any depth.
+
+    Returns: (resolved_absolute_path, error_message). One is always None.
+      - On success: (path_string, None)
+      - On miss:    (None, "Referenced file not found: <name>")
+      - On ambiguity (multiple matches in subfolders):
+          (closest_match_path, "Ambiguous: multiple matches found for ...")
+        We still proceed with the closest match so parsing continues, but
+        flag it so higher layers can warn the students.
+
+    The reference may also literally contain a path separator (e.g. "subs/x.dig")
+    if a future Digital version writes one, parser handles that as a direct path lookup.
+    """
+    # Case 1: the reference already includes a path separator. 
+    if "/" in reference or "\\" in reference:
+        direct = parent_dir / reference
+        if direct.exists():
+            return str(direct.resolve()), None
+        return None, f"Referenced file not found: {direct}"
+
+    # Case 2: bare filename. Check same folder first.
+    same_folder = parent_dir / reference
+    if same_folder.exists():
+        return str(same_folder.resolve()), None
+
+    # Case 3: search subfolders recursively.
+    matches = list(parent_dir.rglob(reference))
+    if len(matches) == 1:
+        return str(matches[0].resolve()), None
+    if len(matches) > 1:
+        # Pick the shallowest.
+        matches.sort(key=lambda p: len(p.parts))
+        chosen = matches[0]
+        error = (
+            f"Ambiguous reference '{reference}': found at "
+            f"{[str(m) for m in matches]}; using shallowest match."
+        )
+        return str(chosen.resolve()), error
+
+    return None, f"Referenced file not found: {reference} (searched {parent_dir} recursively)"
 
 def _parse_one_file(
     path: str,
@@ -190,30 +237,29 @@ def _parse_one_file(
     )
 
     # Resolve subcircuit references. They are components whose element_name
-    # ends in ".dig". Their file is expected to live in the same folder as
-    # the parent.
+    # ends in ".dig". Their file is expected to live in no higher folder level 
+    # compared to the parent.
     parent_dir = Path(path).parent
     for comp in components:
         if not comp.element_name.endswith(".dig"):
             continue
 
         ref = comp.element_name
-        child_path = parent_dir / ref
+        resolved_path, resolution_error = _resolve_subcircuit_path(parent_dir, ref)
 
         sub_ref = SubcircuitReference(
             reference=ref,
             parent_component=comp,
-            resolved_path=str(child_path.resolve()) if child_path.exists() else None,
+            resolved_path=resolved_path,
+            resolution_error=resolution_error,
         )
 
-        if not child_path.exists():
-            sub_ref.resolution_error = f"Referenced file not found: {child_path}"
-        else:
+        if resolved_path is not None:
             try:
-                child = _parse_with_cache(str(child_path), cache, in_progress)
+                child = _parse_with_cache(resolved_path, cache, in_progress)
                 sub_ref.child_circuit = child
             except Exception as e:
-                # Record the error and continue. Higher layers can surface it.
                 sub_ref.resolution_error = f"{type(e).__name__}: {e}"
+
         circuit.subcircuits.append(sub_ref)
     return circuit

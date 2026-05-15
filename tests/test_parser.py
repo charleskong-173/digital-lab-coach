@@ -270,3 +270,60 @@ def test_missing_subcircuit_recorded_not_crashed(tmp_path):
     assert sub.child_circuit is None
     assert sub.resolution_error is not None
     assert "not found" in sub.resolution_error.lower()
+
+def test_subfolder_reference_resolves():
+    """A reference to a file in a subfolder (no path in XML) should still resolve."""
+    c = _load_tier2("uses_nested.dig")
+
+    assert {inp.label for inp in c.inputs()} == {"In1"}
+    assert {out.label for out in c.outputs()} == {"Out1"}
+
+    assert len(c.subcircuits) == 1
+    sub = c.subcircuits[0]
+    assert sub.reference == "nested_inner.dig"
+    assert sub.resolution_error is None
+    assert sub.child_circuit is not None
+    # The resolved path should land inside the subs/ folder.
+    assert "subs" in sub.resolved_path.replace("\\", "/").split("/")
+
+
+def test_ambiguous_subcircuit_flagged_but_resolved(tmp_path):
+    """Two files with the same name in different subfolders → resolve to shallowest, flag warning."""
+    # Layout:
+    #   parent.dig (references "inner.dig")
+    #   a/inner.dig
+    #   a/deeper/inner.dig
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "deeper").mkdir()
+
+    inner_xml = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<circuit><version>2</version><attributes/>'
+        '<visualElements>'
+        '<visualElement><elementName>In</elementName>'
+        '<elementAttributes><entry><string>Label</string><string>A</string></entry></elementAttributes>'
+        '<pos x="0" y="0"/></visualElement>'
+        '</visualElements><wires/></circuit>'
+    )
+    (tmp_path / "a" / "inner.dig").write_text(inner_xml)
+    (tmp_path / "a" / "deeper" / "inner.dig").write_text(inner_xml)
+
+    parent_xml = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<circuit><version>2</version><attributes/>'
+        '<visualElements>'
+        '<visualElement><elementName>inner.dig</elementName>'
+        '<elementAttributes/><pos x="0" y="0"/></visualElement>'
+        '</visualElements><wires/></circuit>'
+    )
+    parent = tmp_path / "parent.dig"
+    parent.write_text(parent_xml)
+
+    c = parse_dig_file(str(parent))
+    assert len(c.subcircuits) == 1
+    sub = c.subcircuits[0]
+    assert sub.child_circuit is not None  
+    assert sub.resolution_error is not None
+    assert "ambiguous" in sub.resolution_error.lower()
+    # Should have picked the shallower path.
+    assert "deeper" not in sub.resolved_path.replace("\\", "/")
