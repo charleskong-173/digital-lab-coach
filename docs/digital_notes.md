@@ -33,6 +33,11 @@ Last updated: [2026/5/14]
 | Clock | Clock signal | No attributes in basic use |
 | Testcase | Embedded test cases | Contains `<testData>` → `<dataString>` for test data, default name <string>Testdata</string>|
 
+### Gates
+
+- Gate multi-input attribute is `Inputs` (<int>), absent = 2.
+- Gate anchor = TOP input pin, not center.
+
 ### Wires
 
 - A `<wire>` has exactly two endpoints: `<p1>` and `<p2>`, each with x/y coordinates
