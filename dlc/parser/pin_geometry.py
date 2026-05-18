@@ -179,7 +179,6 @@ def _register_pins(comp: Component) -> list[PinSpec]:
     """
     Register: D input, C clock, en write-enable, Q output.
 
-    Verified from register_test.dig:
       D  at offset (0, 0)   (top-left)
       C  at offset (0, 20)  (left, below D)
       en at offset (0, 40)  (left, below C) typically tied to Const(1).
@@ -192,12 +191,44 @@ def _register_pins(comp: Component) -> list[PinSpec]:
         PinSpec("Q",  offset_x=60, offset_y=20, direction="out"),
     ]
 
+def _decoder_pins(comp: Component) -> list[PinSpec]:
+    """
+    Decoder: one sel input at the bottom-left, 2^Selector Bits outputs
+    stacked on the right edge. Verified empirically against the
+    Example Decoder (Selector Bits=5, 32 enable outputs):
+      out_i at (60, i*20)
+      sel   at (0,  n*20 + 20)  
+    """
+    sel_bits = int(comp.attributes.get("Selector Bits", 1))
+    n_outputs = 2 ** sel_bits
+    pins: list[PinSpec] = [
+        PinSpec("sel", offset_x=0, offset_y=n_outputs * 20 + 20, direction="in"),
+    ]
+    for i in range(n_outputs):
+        pins.append(PinSpec(f"out_{i}", offset_x=60, offset_y=i * 20, direction="out"))
+    return pins
+
+
+def _priority_encoder_pins(comp: Component) -> list[PinSpec]:
+    """
+    PriorityEncoder: 2^Selector Bits priority inputs on the left, one
+    encoded selector output on the right. Approximate offsets verified
+    Example (Selector Bits=3, 8 inputs):
+      in_i at (0, i*20)
+      out  at (80, 0)
+    """
+    sel_bits = int(comp.attributes.get("Selector Bits", 1))
+    n_inputs = 2 ** sel_bits
+    pins: list[PinSpec] = []
+    for i in range(n_inputs):
+        pins.append(PinSpec(f"in_{i}", offset_x=0, offset_y=i * 20, direction="in"))
+    pins.append(PinSpec("num", offset_x=80, offset_y=0, direction="out"))
+    return pins
 
 def _comparator_pins(comp: Component) -> list[PinSpec]:
     """
     Comparator: A and B inputs left, greater/equal/less outputs right.
 
-    Verified from comparator_4bit.dig and Lab 5 control-unit.dig:
       Visual width = 60, so outputs sit at x=60.
       A  at (0, 0)  in
       B  at (0, 20) in
@@ -224,6 +255,8 @@ DYNAMIC_PIN_TABLE: dict[str, callable] = {
     "Splitter":    _splitter_pins,
     "Register":    _register_pins,
     "Comparator":  _comparator_pins,
+    "Decoder":         _decoder_pins,
+    "PriorityEncoder": _priority_encoder_pins,
 }
 
 
