@@ -54,9 +54,10 @@ Digital's coordinate system: x increases rightward, y increases downward. Anchor
 | Element | Inputs (left edge) | Outputs (right edge) | Notes |
 |---|---|---|---|
 | `Not` | `A` (0, 0) | `Y` (40, 0) | Width 40 |
-| `And`/`Or`/`XOr` (non-wide) | `in_i` at (0, i*20) | `Y` (80, center_y) | Compact body |
-| Same, `wideShape=True`, even N | Two halves with **40-unit gap** in the middle | `Y` (80, center_y) | N=4 → (0,0),(0,20),(0,60),(0,80); N=6 → (0,0),(0,20),(0,40),(0,80),(0,100),(0,120) |
-| `NAnd`/`NOr`/`XNOr` | same as positive variants | Output bubble pushes visible pin ~20 right; absorbed by snap tolerance | |
+| `And`/`Or`/`XOr` (wideShape=True, even N) | Two halves with **40-unit gap** in the middle | `Y` (80, center_y) | Verified empirically. N=2 → (0,0),(0,40); N=4 → (0,0),(0,20),(0,60),(0,80); N=6 → (0,0),(0,20),(0,40),(0,80),(0,100),(0,120) |
+| `And`/`Or`/`XOr` (wideShape=True, odd N) | `in_i` at (0, i*20) — uniform | `Y` (80, center_y) | Tested via three_inputand, five_inputand (tests pass with full I→O); offsets match wire endpoints exactly |
+| `And`/`Or`/`XOr` (wideShape=False) | Assumed `in_i` at (0, i*20) | Assumed `Y` (80, center_y) | **Not yet observed in any sample.** Code uses the same uniform-20 path as wideShape+odd. Will verify when we encounter one in the field |
+| `NAnd`/`NOr`/`XNOr` (any) | same as positive variants | Output bubble pushes visible pin ~20 right; absorbed by snap tolerance | Only wideShape=True observed (single_nand) |
 | `In`/`Out`/`Const`/`Clock`/`Ground`/`VDD` | single pin at anchor (0, 0) | | |
 | `Tunnel` | single bidir pin at anchor | | NetName unifies across the circuit |
 | `Multiplexer` (sel_bits=1, n=2) | `in0` (0, 0), `in1` (0, 40), `sel` (20, 40) | `out` (40, 20) | **Different spacing for 2-input vs 4+** |
@@ -156,7 +157,7 @@ The ablation contrast (Layer 1 alone vs Layer 1+3 vs Layer 3 alone) is the proje
 
 DLC's parser aims to **semantically understand** elements used in COMP 311 labs so far. Other elements (transistor primitives, FPGA-specific blocks, FSM editor outputs, etc.) are parsed structurally but treated as opaque `UnknownComponent` with named pins for now. This lets the analyzer skip unrecognized components and the LLM describe them generically, while keeping the parser future-proof for new labs.
 
-**Known-and-semantically-supported** (verified against tier-1, tier-2, tier-3, and full Lab 5 circuits including a CPU):
+**Known-and-semantically-supported**:
 Wire (straight, L, diagonal), And, Or, XOr, NAnd, NOr, XNOr, Not, In, Out, Multiplexer, Splitter, Tunnel, ROM, Register, Const, Comparator, Add, BitExtender, Clock, Ground, VDD, BarrelShifter, Decoder, PriorityEncoder, Testcase, Rectangle.
 
 **Annotation-only** (parsed but explicitly carry no signal pins): Testcase, Rectangle. Excluded from implicit-pin candidate set.
