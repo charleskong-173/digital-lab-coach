@@ -154,19 +154,24 @@ def _multiplexer_pins(comp: Component) -> list[PinSpec]:
 def _splitter_pins(comp: Component) -> list[PinSpec]:
     """
     Splitter. 
-    bit-group sizes. Each group is one pin. Inputs left, outputs right.
-    (Not Verified for all cases yet)
+    Splitter / merger. Bit-group sizes determine pin count. Inputs on the
+    left edge, outputs on the right edge. Pin spacing = 20 * splitterSpreading.
+
+    splitterSpreading defaults to 1 (20-unit spacing). When set (e.g. =2),
+    pins are spaced 40 units apart
     """
     in_split = str(comp.attributes.get("Input Splitting", "1"))
     out_split = str(comp.attributes.get("Output Splitting", "1"))
+    spread = int(comp.attributes.get("splitterSpreading", 1))
     in_groups = [s.strip() for s in in_split.split(",") if s.strip()]
     out_groups = [s.strip() for s in out_split.split(",") if s.strip()]
+    spacing = 20 * spread
 
     pins: list[PinSpec] = []
     for i, _ in enumerate(in_groups):
-        pins.append(PinSpec(f"in{i}", offset_x=0, offset_y=i * 20, direction="in"))
+        pins.append(PinSpec(f"in{i}", offset_x=0, offset_y=i * spacing, direction="in"))
     for i, _ in enumerate(out_groups):
-        pins.append(PinSpec(f"out{i}", offset_x=20, offset_y=i * 20, direction="out"))
+        pins.append(PinSpec(f"out{i}", offset_x=20, offset_y=i * spacing, direction="out"))
     return pins
 
 
