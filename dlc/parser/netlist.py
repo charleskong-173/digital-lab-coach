@@ -5,14 +5,25 @@ A NET is a maximal set of points that are connected via:
   - wires whose endpoints share coordinates (transitively), and
   - tunnels that share a NetName.
 
-A pin "belongs to" a net if a wire endpoint of that net coincides with the pin's coordinate.
+A pin belongs to a net if its actual coordinate coincides with one of the
+net's coordinates.
 
-Design choice:
-  1. Build nets purely from wire endpoints + tunnel names.
-  2. For each component, determine its pin coordinates by pin_geometry.
-  3. Attach pins to nets by coordinate coincidence.
+Endpoint-primary design:
+  Predicted pin geometry from pin_geometry.py is used only to assign each endpoint to a
+  named pin on the right component (name + direction). The algorithm:
 
-This makes connectivity robust to imperfect geometry tables.
+    1. Union every wire's two endpoints.
+    2. Union tunnel coordinates that share a NetName.
+    3. Materialize nets from union-find groups.
+    4. For each wire endpoint, find its single closest predicted pin within
+       PIN_SNAP_TOLERANCE (Manhattan). This prevents one component from 
+       "stealing" an endpoint that actually belongs to a neighbor.
+    5. For each predicted pin, the endpoint nearest to that pin becomes the 
+       pin's actual coord; pins with no claimed endpoint are recorded as dangling 
+       at predicted coord.
+    6. Components with no predicted geometry (subcircuit references, unknown
+       elements) get implicit pins from any still-unclaimed wire endpoints
+       within IMPLICIT_PIN_RADIUS, one pin per (component, net) pair.
 """
 
 from dataclasses import dataclass, field
@@ -21,6 +32,8 @@ from dlc.parser.models import Circuit, Component, Wire
 from dlc.parser.pin_geometry import absolute_pin_positions
 
 
+PIN_SNAP_TOLERANCE = 40
+IMPLICIT_PIN_RADIUS = 200
 
 class _UnionFind:
     """
@@ -57,7 +70,7 @@ class _UnionFind:
         return out
 
 
-@dataclass(frozen=True)
+@dataclass
 class Pin:
     component_index: int
     element_name: str
@@ -93,7 +106,7 @@ class Net:
 @dataclass
 class NetList:
     """
-    All nets of a circuit, plus lookups.
+    All nets of a circuit, plus a coord -> net_id lookup.
     """
     nets: list = field(default_factory=list)
     by_coord: dict = field(default_factory=dict)
@@ -116,75 +129,296 @@ class NetList:
             f"{n_no_driver} undriven-with-pins, "
             f"{n_multi_driver} multi-driver"
         )
+    
+# Helpers
+
+def _collect_wire_endpoints(circuit: Circuit) -> set[tuple[int, int]]:
+    eps: set = set()
+    for w in circuit.wires:
+        eps.add(w.p1.as_tuple())
+        eps.add(w.p2.as_tuple())
+    return eps
 
 
-# Net builder
-
-def _component_pins(circuit: Circuit) -> list[Pin]:
+def _all_predicted_pins(circuit: Circuit) -> list:
     """
-    Produce Pin objects for every component.
-
-    For components we have geometry for: use absolute_pin_positions().
-    For subcircuit references and unknown components: we don't know exact
-    pin layout, so we create no explicit pins here. They get implicit pins
-    later from wire endpoints that touch them (handled in build_netlist).
+    Return list of (component_index, (abs_x, abs_y), spec) for every predicted
+    pin of every component with known geometry.
     """
-    pins: list[Pin] = []
-    for idx, comp in enumerate(circuit.components):
-        positioned = absolute_pin_positions(comp)
-        for abs_pos, spec in positioned:
-            pins.append(
-                Pin(
-                    component_index=idx,
-                    element_name=comp.element_name,
-                    pin_name=spec.name,
-                    x=abs_pos.x,
-                    y=abs_pos.y,
-                    direction=spec.direction,
-                )
+    out = []
+    for c_idx, comp in enumerate(circuit.components):
+        for abs_pos, spec in absolute_pin_positions(comp):
+            out.append((c_idx, (abs_pos.x, abs_pos.y), spec))
+    return out
+
+
+def _assign_endpoints_to_pins(
+    predicted: list,
+    endpoints: set,
+    tolerance: int,
+) -> dict:
+   
+    endpoint_owner: dict = {}
+    for ep in endpoints:
+        best = None
+        for c_idx, (px, py), spec in predicted:
+            d = abs(px - ep[0]) + abs(py - ep[1])
+            if d > tolerance:
+                continue
+            key = (c_idx, spec.name)
+            if best is None:
+                best = (d, c_idx, spec.name)
+            elif d < best[0]:
+                best = (d, c_idx, spec.name)
+            elif d == best[0] and key < (best[1], best[2]):
+                best = (d, c_idx, spec.name)
+        if best is not None:
+            endpoint_owner[ep] = best
+
+    pin_endpoint: dict = {}
+    for ep, (dist, c_idx, spec_name) in endpoint_owner.items():
+        key = (c_idx, spec_name)
+        prev = pin_endpoint.get(key)
+        if prev is None:
+            pin_endpoint[key] = (dist, ep)
+        else:
+            prev_dist, prev_ep = prev
+            if dist < prev_dist or (dist == prev_dist and ep < prev_ep):
+                pin_endpoint[key] = (dist, ep)
+
+    return {k: v[1] for k, v in pin_endpoint.items()}
+
+
+def _make_pin(
+    component_index: int,
+    component: Component,
+    spec,
+    coord: tuple[int, int],
+) -> Pin:
+    return Pin(
+        component_index=component_index,
+        element_name=component.element_name,
+        pin_name=spec.name,
+        x=coord[0],
+        y=coord[1],
+        direction=spec.direction,
+    )
+
+
+def _attach_pin(
+    netlist: NetList,
+    pin: Pin,
+    coord: tuple[int, int],
+    is_dangling: bool,
+) -> None:
+    """
+    Attach a pin to the netlist. If `coord` is already on a net, 
+    append the pin to that net. Otherwise create a fresh singleton 
+    net for the pin.
+
+    When `is_dangling` is True we do NOT pollute `by_coord` with the
+    singleton's coord, so two different dangling pins that happen to share
+    a predicted coord remain as separate dangling singletons rather than
+    silently merging into one.
+    """
+    nid = netlist.by_coord.get(coord)
+    if nid is not None:
+        netlist.nets[nid].pins.append(pin)
+        return
+    new_id = len(netlist.nets)
+    new_net = Net(net_id=new_id, coords={coord}, pins=[pin])
+    netlist.nets.append(new_net)
+    if not is_dangling:
+        netlist.by_coord[coord] = new_id
+
+
+def _attach_pins_endpoint_first(
+    circuit: Circuit,
+    netlist: NetList,
+    endpoints: set,
+) -> set:
+    
+    predicted = _all_predicted_pins(circuit)
+    pin_to_coord = _assign_endpoints_to_pins(
+        predicted, endpoints, PIN_SNAP_TOLERANCE
+    )
+
+    claimed_endpoints: set = set()
+    for c_idx, (px, py), spec in predicted:
+        comp = circuit.components[c_idx]
+        snapped = pin_to_coord.get((c_idx, spec.name))
+        if snapped is not None:
+            pin = _make_pin(c_idx, comp, spec, snapped)
+            _attach_pin(netlist, pin, snapped, is_dangling=False)
+            claimed_endpoints.add(snapped)
+        else:
+            pin = _make_pin(c_idx, comp, spec, (px, py))
+            _attach_pin(netlist, pin, (px, py), is_dangling=True)
+    return claimed_endpoints
+
+
+def _wire_endpoint_degree(circuit: Circuit) -> dict:
+    """
+    Return a dict {(x, y): N} where N is the number of wire endpoints
+    landing on that coord. Degree 1 = exactly one wire terminates here. 
+    Degree >= 2 = a wire L-bend or branching junction.
+    """
+    deg: dict = {}
+    for w in circuit.wires:
+        for ep in (w.p1.as_tuple(), w.p2.as_tuple()):
+            deg[ep] = deg.get(ep, 0) + 1
+    return deg
+
+
+def _attach_implicit_pins(
+    circuit: Circuit,
+    netlist: NetList,
+    endpoints: set,
+    claimed_endpoints: set,
+) -> None:
+    
+    """
+    For components with no predicted geometry (subcircuit references and
+    unknown element types), claim still-unattached wire endpoints as
+    implicit pins. Each endpoint is assigned to the nearest such component
+    within IMPLICIT_PIN_RADIUS, then deduped so each (component, net) pair
+    gets at most one implicit pin.
+
+    Critical filter: only degree-1 wire endpoints are eligible. A pin
+    location is where exactly one wire terminates; degree-2 (L-bend) and
+    degree-3+ (junction) coords are routing, not pins. 
+    """
+    candidates = [
+        (idx, comp) for idx, comp in enumerate(circuit.components)
+        if not absolute_pin_positions(comp)
+    ]
+    if not candidates:
+        return
+
+    deg = _wire_endpoint_degree(circuit)
+
+    group_best: dict = {}
+    for ep in endpoints:
+        if ep in claimed_endpoints:
+            continue
+        if deg.get(ep, 0) != 1:
+            continue
+        best_idx = None
+        best_dist = IMPLICIT_PIN_RADIUS + 1
+        for idx, comp in candidates:
+            d = abs(comp.position.x - ep[0]) + abs(comp.position.y - ep[1])
+            if d < best_dist:
+                best_dist = d
+                best_idx = idx
+            elif d == best_dist and best_idx is not None and idx < best_idx:
+                best_idx = idx
+        if best_idx is None:
+            continue
+        nid = netlist.by_coord.get(ep)
+        if nid is None:
+            continue
+        key = (best_idx, nid)
+        prev = group_best.get(key)
+        if prev is None:
+            group_best[key] = (best_dist, ep)
+        else:
+            prev_dist, prev_ep = prev
+            if best_dist < prev_dist or (
+                best_dist == prev_dist and ep < prev_ep
+            ):
+                group_best[key] = (best_dist, ep)
+
+    for (c_idx, nid), (_dist, ep) in group_best.items():
+        comp = circuit.components[c_idx]
+        netlist.nets[nid].pins.append(
+            Pin(
+                component_index=c_idx,
+                element_name=comp.element_name,
+                pin_name=f"wire@{ep[0]},{ep[1]}",
+                x=ep[0],
+                y=ep[1],
+                direction="unknown",
             )
-    return pins
+        )
 
 
-def _nearest_component_index(
-    circuit: Circuit, x: int, y: int, max_dist: int = 40
-) -> int | None:
+def _resolve_subcircuit_directions(
+    circuit: Circuit, netlist: NetList
+) -> None:
     """
-    For an endpoint that doesn't sit on a known pin (subcircuit / unknown
-    component case), find the closest component anchor within max_dist
-    (Manhattan distance). Used to attach implicit pins.
-    """
-    best_idx = None
-    best_dist = max_dist + 1
-    for idx, comp in enumerate(circuit.components):
-        d = abs(comp.position.x - x) + abs(comp.position.y - y)
-        if d < best_dist:
-            best_dist = d
-            best_idx = idx
-    return best_idx
+    Assign direction and Label-based name to each subcircuit
+    instance's implicit pins, using the child Circuit's In/Out elements as
+    the port spec.
 
+    Limitation: position-only matching. Works for the common Digital
+    rendering convention (Ins on the left edge, Outs on the right). 
+    Edge cases (a child with bidirectional ports, or a layout
+    Digital somehow renders differently) fall through unresolved and
+    surface as warnings.
+    """
+    for sub_ref in circuit.subcircuits:
+        child = sub_ref.child_circuit
+        if child is None:
+            continue
+
+        inst_idx = None
+        for idx, comp in enumerate(circuit.components):
+            if comp is sub_ref.parent_component:
+                inst_idx = idx
+                break
+        if inst_idx is None:
+            continue
+
+        implicit_pins = [
+            pin for net in netlist.nets for pin in net.pins
+            if pin.component_index == inst_idx and pin.direction == "unknown"
+        ]
+        if not implicit_pins:
+            continue
+
+        xs = [p.x for p in implicit_pins]
+        if len(set(xs)) >= 2:
+            midpoint = (min(xs) + max(xs)) / 2
+            left = [p for p in implicit_pins if p.x < midpoint]
+            right = [p for p in implicit_pins if p.x > midpoint]
+        else:
+            n_ins = len(child.inputs())
+            implicit_sorted = sorted(implicit_pins, key=lambda p: p.y)
+            left = implicit_sorted[:n_ins]
+            right = implicit_sorted[n_ins:]
+
+        left.sort(key=lambda p: p.y)
+        right.sort(key=lambda p: p.y)
+
+        child_ins = sorted(child.inputs(), key=lambda c: c.position.y)
+        child_outs = sorted(child.outputs(), key=lambda c: c.position.y)
+
+        for pin, child_in in zip(left, child_ins):
+            pin.direction = "in"
+            if child_in.label:
+                pin.pin_name = child_in.label
+
+        for pin, child_out in zip(right, child_outs):
+            pin.direction = "out"
+            if child_out.label:
+                pin.pin_name = child_out.label
+
+
+# Public API
 
 def build_netlist(circuit: Circuit) -> NetList:
     """
     Build the NetList for a circuit.
-
-    Steps:
-      1. Union every wire's two endpoints.
-      2. Union tunnel coordinates that share a NetName.
-      3. Materialize nets from union-find groups.
-      4. Attach known component pins to nets by coordinate match.
-      5. For wire endpoints not matched to a known pin, attach an implicit
-         pin to the nearest component.
     """
     uf = _UnionFind()
 
-    # Step 1
+    # Step 1: unify wire-endpoint coords transitively.
     for wire in circuit.wires:
         a = wire.p1.as_tuple()
         b = wire.p2.as_tuple()
         uf.union(a, b)
 
-    # Step 2
+    # Step 2: unify tunnel coords that share a NetName.
     tunnels_by_name: dict[str, list[tuple[int, int]]] = {}
     for comp in circuit.components:
         if comp.element_name != "Tunnel":
@@ -200,16 +434,12 @@ def build_netlist(circuit: Circuit) -> NetList:
         for other in coords[1:]:
             uf.union(first, other)
 
-    #Step 3
+    # Step 3: materialize nets from union-find groups.
     groups = uf.groups()
     netlist = NetList()
-    rep_to_netid: dict = {}
-
     for rep, members in groups.items():
         net_id = len(netlist.nets)
-        rep_to_netid[rep] = net_id
         net = Net(net_id=net_id, coords=set(members))
-        # Record which tunnel names landed in this net.
         for comp in circuit.components:
             if comp.element_name == "Tunnel":
                 if comp.position.as_tuple() in net.coords:
@@ -220,52 +450,15 @@ def build_netlist(circuit: Circuit) -> NetList:
         for m in members:
             netlist.by_coord[m] = net_id
 
-    #Step 4
-    all_pins = _component_pins(circuit)
-    matched_pin_coords: set = set()
+    # Steps 4: endpoint-primary pin attachment (Voronoi).
+    endpoints = _collect_wire_endpoints(circuit)
+    claimed = _attach_pins_endpoint_first(circuit, netlist, endpoints)
 
-    for pin in all_pins:
-        coord = (pin.x, pin.y)
-        nid = netlist.by_coord.get(coord)
-        if nid is not None:
-            netlist.nets[nid].pins.append(pin)
-            matched_pin_coords.add(coord)
-        else:
-            net_id = len(netlist.nets)
-            net = Net(net_id=net_id, coords={coord})
-            net.pins.append(pin)
-            netlist.nets.append(net)
-            netlist.by_coord[coord] = net_id
+    # Step 5: implicit pins for no-geometry components, deduped per net.
+    _attach_implicit_pins(circuit, netlist, endpoints, claimed)
 
-    #Step 5
-    for wire in circuit.wires:
-        for endpoint in (wire.p1.as_tuple(), wire.p2.as_tuple()):
-            if endpoint in matched_pin_coords:
-                continue
-            nid = netlist.by_coord.get(endpoint)
-            if nid is None:
-                continue
-            net = netlist.nets[nid]
-            already = any((p.x, p.y) == endpoint for p in net.pins)
-            if already:
-                continue
-            idx = _nearest_component_index(
-                circuit, endpoint[0], endpoint[1]
-            )
-            if idx is None:
-                continue
-            comp = circuit.components[idx]
-            if absolute_pin_positions(comp):
-                continue
-            net.pins.append(
-                Pin(
-                    component_index=idx,
-                    element_name=comp.element_name,
-                    pin_name=f"wire@{endpoint[0]},{endpoint[1]}",
-                    x=endpoint[0],
-                    y=endpoint[1],
-                    direction="unknown",
-                )
-            )
+    # Step 6: resolve subcircuit-instance pin directions
+    # against the child circuit's In/Out elements.
+    _resolve_subcircuit_directions(circuit, netlist)
 
     return netlist

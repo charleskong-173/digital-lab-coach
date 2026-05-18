@@ -53,16 +53,52 @@ def _nary_gate_pins(comp: Component) -> list[PinSpec]:
 
     Digital attribute 'Inputs' (<int>) controls input count; absent = 2.
 
-    Gate Geometry (anchor at top input):
-      - input i at offset (0, i*20), starting AT the anchor
-      - output at (80, ((N-1)*20)//2)  (Not Verified for all cases yet)
+    'wideShape' (boolean) selects a taller body. Default treated as False.
+
+    Geometry:
+
+      wideShape=False (compact body): inputs uniform spacing 20.
+      wideShape=True, odd N: inputs uniform spacing 20.
+      wideShape=True, even N: top half + 40-unit middle gap + bottom half,
+        each half internally spaced 20.
+        Examples: N=2 -> +0, +40
+                  N=4 -> +0, +20, +60, +80
+                  N=6 -> +0, +20, +40, +80, +100, +120
+
+    Output sits at x=80, y centered between the topmost and bottommost
+    input. NAnd/NOr/XNOr add a bubble that  pushes the visible output 20
+    further right, absorbed by the endpoint-snap tolerance in build_netlist.
     """
     n = int(comp.attributes.get("Inputs", 2))
+    wide = bool(comp.attributes.get("wideShape", False))
     pins: list[PinSpec] = []
-    for i in range(n):
-        pins.append(PinSpec(f"in{i}", offset_x=0, offset_y=i * 20, direction="in"))
-    center_y = ((n - 1) * 20) // 2
+
+    if wide and n >= 2 and n % 2 == 0:
+        half = n // 2
+        for i in range(half):
+            pins.append(
+                PinSpec(f"in{i}", offset_x=0, offset_y=i * 20, direction="in")
+            )
+        bottom_start = (half - 1) * 20 + 40
+        for i in range(half):
+            pins.append(
+                PinSpec(
+                    f"in{half + i}",
+                    offset_x=0,
+                    offset_y=bottom_start + i * 20,
+                    direction="in",
+                )
+            )
+        center_y = ((half - 1) * 20 + bottom_start) // 2
+
+    else:
+        for i in range(n):
+            pins.append(
+                PinSpec(f"in{i}", offset_x=0, offset_y=i * 20, direction="in")
+            )
+        center_y = ((n - 1) * 20) // 2
     pins.append(PinSpec("Y", offset_x=80, offset_y=center_y, direction="out"))
+    
     return pins
 
 
@@ -102,13 +138,18 @@ def _splitter_pins(comp: Component) -> list[PinSpec]:
 
 def _register_pins(comp: Component) -> list[PinSpec]:
     """
-    Register: D input, clock input, optional enable, Q output.
-    (Not Verified for all cases yet)
+    Register: D input, C clock, en write-enable, Q output.
+
+    Verified from register_test.dig:
+      D  at offset (0, 0)   (top-left)
+      C  at offset (0, 20)  (left, below D)
+      en at offset (0, 40)  (left, below C) typically tied to Const(1).
+      Q  at offset (60, 20) (right, between D and en heights)
     """
     return [
         PinSpec("D",  offset_x=0,  offset_y=0,  direction="in"),
         PinSpec("C",  offset_x=0,  offset_y=20, direction="in"),
-        PinSpec("en", offset_x=20, offset_y=60, direction="in"),
+        PinSpec("en", offset_x=0, offset_y=40, direction="in"),
         PinSpec("Q",  offset_x=60, offset_y=20, direction="out"),
     ]
 
