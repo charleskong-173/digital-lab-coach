@@ -327,3 +327,73 @@ def test_ambiguous_subcircuit_flagged_but_resolved(tmp_path):
     assert "ambiguous" in sub.resolution_error.lower()
     # Should have picked the shallower path.
     assert "deeper" not in sub.resolved_path.replace("\\", "/")
+
+# -------------------------------------------------------------------
+# Function 2: net building
+# -------------------------------------------------------------------
+
+from dlc.parser.netlist import build_netlist, NetList
+
+
+def test_netlist_single_and():
+    """single_and: A,B inputs, AND, Y output. Expect a connected structure."""
+    c = parse_dig_file(str(SAMPLES_DIR / "single_and.dig"))
+    nl = build_netlist(c)
+    assert isinstance(nl, NetList)
+    assert len(nl.nets) > 0
+
+    has_real_connection = any(
+        net.drivers() and net.sinks() for net in nl.nets
+    )
+    assert has_real_connection
+
+
+def test_netlist_tunnel_connects_across():
+    """
+    tunnel_test: input A -> Tunnel(net1) ... Tunnel(net1) -> NOT -> Y.
+    The two tunnels share NetName 'net1', so A's signal must reach the NOT
+    even though there's no continuous wire between them.
+    """
+    c = parse_dig_file(str(SAMPLES_DIR / "tunnel_test.dig"))
+    nl = build_netlist(c)
+    net1_nets = [n for n in nl.nets if "net1" in n.tunnel_names]
+    assert len(net1_nets) == 1, "Both 'net1' tunnels should be in ONE net"
+
+
+def test_netlist_subcircuit_pins_via_wires():
+    """
+    uses_subcircuit: the subcircuit reference has no known geometry, so its
+    connections come from implicit pins (wire endpoints near it).
+    We just assert the netlist builds and the subcircuit component got at
+    least one implicit pin.
+    """
+    c = parse_dig_file(
+        str(TIER2_DIR / "uses_subcircuit.dig")
+    )
+    nl = build_netlist(c)
+
+    sub_idx = next(
+        i for i, comp in enumerate(c.components)
+        if comp.element_name.endswith(".dig")
+    )
+    implicit = [
+        p for net in nl.nets for p in net.pins
+        if p.component_index == sub_idx
+    ]
+    assert len(implicit) > 0, "Subcircuit should get implicit pins from wires"
+
+
+def test_netlist_all_samples_build():
+    """Net building must not crash on any tier-1 or tier-2 sample."""
+    import glob
+    for f in glob.glob("data/sample_circuits/**/*.dig", recursive=True):
+        c = parse_dig_file(f)
+        nl = build_netlist(c)
+        assert isinstance(nl, NetList)
+
+
+def test_netlist_summary_runs():
+    c = parse_dig_file(str(SAMPLES_DIR / "full_adder.dig"))
+    nl = build_netlist(c)
+    s = nl.summary()
+    assert "NetList:" in s

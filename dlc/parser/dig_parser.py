@@ -57,7 +57,7 @@ def _parse_attributes(element_attributes) -> dict:
         elif value_tag == "string":
             value = value_text if value_text is not None else ""
         else:
-            # Unknown value type (e.g. <rotation>, <testData>, <shape>).
+            # Unknown value type with no geometry (e.g. <rotation>, <testData>, <shape>).
             # Keep the raw text so nothing is lost;
             value = value_text if value_text is not None else value_tag
 
