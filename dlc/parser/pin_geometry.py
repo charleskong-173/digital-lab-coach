@@ -138,16 +138,21 @@ def _nary_gate_pins(comp: Component) -> list[PinSpec]:
 
 def _multiplexer_pins(comp: Component) -> list[PinSpec]:
     """
-    Multiplexer. 'Selector Bits' = N → 2^N data inputs (absent = 1 → 2-to-1) (Not Verified for all cases yet)
+    Multiplexer. 'Selector Bits' = N → 2^N data inputs (absent = 1 → 2-to-1).
+
+      in_i at (0,  i * 40)           data inputs, 40-unit spacing
+      sel  at (20, (n_inputs-1)*40)  bottom-middle (under the last input)
+      out  at (40, (n_inputs-1)*40 // 2)  right-middle
     """
     sel_bits = int(comp.attributes.get("Selector Bits", 1))
     n_inputs = 2 ** sel_bits
+    last_y = (n_inputs - 1) * 40
 
     pins: list[PinSpec] = []
     for i in range(n_inputs):
-        pins.append(PinSpec(f"in{i}", offset_x=0, offset_y=i * 20, direction="in"))
-    pins.append(PinSpec("sel", offset_x=20, offset_y=n_inputs * 20 + 20, direction="in"))
-    pins.append(PinSpec("out", offset_x=40, offset_y=(n_inputs * 20) // 2, direction="out"))
+        pins.append(PinSpec(f"in{i}", offset_x=0, offset_y=i * 40, direction="in"))
+    pins.append(PinSpec("sel", offset_x=20, offset_y=last_y, direction="in"))
+    pins.append(PinSpec("out", offset_x=40, offset_y=last_y // 2, direction="out"))
     return pins
 
 
@@ -197,12 +202,12 @@ def _decoder_pins(comp: Component) -> list[PinSpec]:
     stacked on the right edge. Verified empirically against the
     Example Decoder (Selector Bits=5, 32 enable outputs):
       out_i at (60, i*20)
-      sel   at (0,  n*20 + 20)  
+      sel   at (0,  n_outputs*20 + 40)
     """
     sel_bits = int(comp.attributes.get("Selector Bits", 1))
     n_outputs = 2 ** sel_bits
     pins: list[PinSpec] = [
-        PinSpec("sel", offset_x=0, offset_y=n_outputs * 20 + 20, direction="in"),
+        PinSpec("sel", offset_x=0, offset_y=n_outputs * 20 + 40, direction="in"),
     ]
     for i in range(n_outputs):
         pins.append(PinSpec(f"out_{i}", offset_x=60, offset_y=i * 20, direction="out"))
@@ -275,18 +280,19 @@ def get_pin_specs(component: Component) -> list[PinSpec]:
 
 def _rotate(dx: int, dy: int, rotation: int) -> tuple[int, int]:
     """
-    Rotate a (dx, dy) offset by `rotation` * 90 degrees clockwise (in
-    Digital's screen coordinates, y growing down). Digital stores
-    rotation as 0/1/2/3 in <rotation rotation="N"/>.
+    Rotate a (dx, dy) offset by Digital's rotation index (0..3). Digital
+    stores rotation as 0/1/2/3 in <rotation rotation="N"/>. Rotation 1
+    means 90 degrees counter-clockwise as viewed in screen coordinates
+    (y growing down).
     """
     r = rotation % 4
     if r == 0:
         return (dx, dy)
     if r == 1:
-        return (-dy, dx)
+        return (dy, -dx)
     if r == 2:
         return (-dx, -dy)
-    return (dy, -dx)  # r == 3
+    return (-dy, dx)  # r == 3
 
 def absolute_pin_positions(component: Component) -> list[tuple[Position, PinSpec]]:
     """

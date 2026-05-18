@@ -159,36 +159,40 @@ def _assign_endpoints_to_pins(
     endpoints: set,
     tolerance: int,
 ) -> dict:
-   
-    endpoint_owner: dict = {}
+
+    """
+    Build every (pin, endpoint, distance) triple where distance <=
+    tolerance. Sort by (distance, component_index, pin_name, endpoint).
+    Walk the sorted list and claim each (pin, endpoint) pair only if
+    NEITHER side has been claimed yet. Returns pin_to_coord.
+    """
+    triples = []
     for ep in endpoints:
-        best = None
         for c_idx, (px, py), spec in predicted:
             d = abs(px - ep[0]) + abs(py - ep[1])
             if d > tolerance:
                 continue
-            key = (c_idx, spec.name)
-            if best is None:
-                best = (d, c_idx, spec.name)
-            elif d < best[0]:
-                best = (d, c_idx, spec.name)
-            elif d == best[0] and key < (best[1], best[2]):
-                best = (d, c_idx, spec.name)
-        if best is not None:
-            endpoint_owner[ep] = best
+            triples.append((d, c_idx, spec.name, ep))
+    triples.sort()
+
+    exact_eps: set = set()
+    nonexact_eps: set = set()
 
     pin_endpoint: dict = {}
-    for ep, (dist, c_idx, spec_name) in endpoint_owner.items():
-        key = (c_idx, spec_name)
-        prev = pin_endpoint.get(key)
-        if prev is None:
-            pin_endpoint[key] = (dist, ep)
+    for dist, c_idx, spec_name, ep in triples:
+        pin_key = (c_idx, spec_name)
+        if pin_key in pin_endpoint:
+            continue
+        if ep in nonexact_eps:
+            continue
+        if dist > 0 and ep in exact_eps:
+            continue
+        pin_endpoint[pin_key] = ep
+        if dist == 0:
+            exact_eps.add(ep)
         else:
-            prev_dist, prev_ep = prev
-            if dist < prev_dist or (dist == prev_dist and ep < prev_ep):
-                pin_endpoint[key] = (dist, ep)
-
-    return {k: v[1] for k, v in pin_endpoint.items()}
+            nonexact_eps.add(ep)
+    return pin_endpoint
 
 
 def _make_pin(
