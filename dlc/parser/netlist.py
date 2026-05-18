@@ -33,7 +33,8 @@ from dlc.parser.pin_geometry import absolute_pin_positions
 
 
 PIN_SNAP_TOLERANCE = 30
-IMPLICIT_PIN_RADIUS = 200
+# Large enough to cover wide subcircuit instances
+IMPLICIT_PIN_RADIUS = 500
 NO_SIGNAL_ELEMENTS = {"Testcase", "Rectangle"}
 
 class _UnionFind:
