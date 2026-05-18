@@ -104,10 +104,11 @@ def test_multiplexer_4input_uses_spacing_20():
 
 
 def test_decoder_layout():
-    """Selector Bits=N → 2^N outputs spaced 20 on right edge; sel below."""
+    """Selector Bits=N → 2^N outputs spaced 20 on right edge; sel sits
+    at (20, n*20), bottom-middle."""
     pos = absolute_pin_positions(_mk("Decoder", 0, 0, **{"Selector Bits": 5}))
     by_name = {spec.name: (p.x, p.y) for p, spec in pos}
-    assert by_name["sel"] == (0, 680)  # n_outputs * 20 + 40
+    assert by_name["sel"] == (20, 640)
     assert by_name["out_0"] == (60, 0)
     assert by_name["out_31"] == (60, 620)
 

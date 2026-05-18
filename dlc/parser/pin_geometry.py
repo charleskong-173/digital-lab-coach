@@ -209,16 +209,16 @@ def _register_pins(comp: Component) -> list[PinSpec]:
 
 def _decoder_pins(comp: Component) -> list[PinSpec]:
     """
-    Decoder: one sel input at the bottom-left, 2^Selector Bits outputs
-    stacked on the right edge. Verified empirically against the
-    Example Decoder (Selector Bits=5, 32 enable outputs):
-      out_i at (60, i*20)
-      sel   at (0,  n_outputs*20 + 40)
+    Decoder: 2^Selector Bits outputs stacked on the right edge,
+    one sel input at the bottom-middle (analogous to Multiplexer n>=4
+    layout). Example (Selector Bits=5, 32 enable outputs):
+      out_i at (60, i * 20)
+      sel   at (20, n_outputs * 20)
     """
     sel_bits = int(comp.attributes.get("Selector Bits", 1))
     n_outputs = 2 ** sel_bits
     pins: list[PinSpec] = [
-        PinSpec("sel", offset_x=0, offset_y=n_outputs * 20 + 40, direction="in"),
+        PinSpec("sel", offset_x=20, offset_y=n_outputs * 20, direction="in"),
     ]
     for i in range(n_outputs):
         pins.append(PinSpec(f"out_{i}", offset_x=60, offset_y=i * 20, direction="out"))
