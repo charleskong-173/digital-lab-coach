@@ -80,10 +80,10 @@ but treated as opaque `UnknownComponent` with named pins for now. This lets
 the analyzer skip unrecognized components and the LLM describe them
 generically, while keeping the parser future-proof for new labs.
 
-Known-and-semantically-supported (initial target):
-Wire, And, Or, XOr, Not, NAnd, NOr, XNOr, In, Out, Multiplexer, Splitter, Tunnel,
-ROM, RAM, Register, Const, Comparator, Add, BitExtender, Clock,
-Testcase, PriorityEncoder, Decoder
+Known-and-semantically-supported (initial targets):
+Wire (straight, L, diagonal), And, Or, XOr, Not, NAnd, NOr, XNOr, In, Out, Multiplexer,
+Splitter, Tunnel, ROM, RAM, Register, Const, Comparator, Add, BitExtender, Clock, Ground, 
+BarrelShifter, Testcase, PriorityEncoder, Decoder, VDD, Rectangle
 
 Out of initial scope (parsed but opaque, may be added in later development):
 all transistor-level elements, FSM elements, FPGA-board-specific blocks,

@@ -34,6 +34,7 @@ from dlc.parser.pin_geometry import absolute_pin_positions
 
 PIN_SNAP_TOLERANCE = 40
 IMPLICIT_PIN_RADIUS = 200
+NO_SIGNAL_ELEMENTS = {"Testcase", "Rectangle"}
 
 class _UnionFind:
     """

@@ -37,6 +37,34 @@ _OUTPUT_PINS = [PinSpec("in", 0, 0, "in")]
 _TUNNEL_PINS = [PinSpec("net", 0, 0, "bidir")]
 _CONST_PINS = [PinSpec("out", 0, 0, "out")]
 _CLOCK_PINS = [PinSpec("clk", 0, 0, "out")]
+_GROUND_PINS = [PinSpec("out", 0, 0, "out")]
+_VDD_PINS = [PinSpec("out", 0, 0, "out")]
+
+_ADD_PINS = [
+    PinSpec("a",   0, 0,  "in"),
+    PinSpec("c_i", 0, 20, "in"),
+    PinSpec("b",   0, 40, "in"),
+    PinSpec("s",   80, 0, "out"),
+    PinSpec("c_o", 80, 40, "out"),
+]
+
+_BITEXTENDER_PINS = [
+    PinSpec("in",  0,  0, "in"),
+    PinSpec("out", 80, 0, "out"),
+]
+
+_BARREL_SHIFTER_PINS = [
+    PinSpec("in",  0,  0,  "in"),
+    PinSpec("sh",  0,  40, "in"),
+    PinSpec("out", 60, 20, "out"),
+]
+
+
+_ROM_PINS = [
+    PinSpec("A",   0,  0,  "in"),
+    PinSpec("sel", 0,  40, "in"),
+    PinSpec("D",   80, 20, "out"),
+]
 
 STATIC_PIN_TABLE: dict[str, list[PinSpec]] = {
     "Not":    _NOT_PINS,
@@ -45,6 +73,12 @@ STATIC_PIN_TABLE: dict[str, list[PinSpec]] = {
     "Tunnel": _TUNNEL_PINS,
     "Const":  _CONST_PINS,
     "Clock":  _CLOCK_PINS,
+    "Ground": _GROUND_PINS,
+    "VDD":    _VDD_PINS,
+    "Add":    _ADD_PINS,
+    "BitExtender":   _BITEXTENDER_PINS,
+    "BarrelShifter": _BARREL_SHIFTER_PINS,
+    "ROM":    _ROM_PINS,
 }
 
 def _nary_gate_pins(comp: Component) -> list[PinSpec]:
