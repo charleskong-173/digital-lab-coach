@@ -376,7 +376,35 @@ def _attach_implicit_pins(
                 direction="unknown",
             )
         )
+    _cap_subcircuit_implicit_pins(circuit, netlist)
 
+def _cap_subcircuit_implicit_pins(circuit: Circuit, netlist: NetList) -> None:
+    for sub_ref in circuit.subcircuits:
+        child = sub_ref.child_circuit
+        if child is None:
+            continue
+        inst_idx = None
+        for idx, comp in enumerate(circuit.components):
+            if comp is sub_ref.parent_component:
+                inst_idx = idx
+                break
+        if inst_idx is None:
+            continue
+
+        cap = len(child.inputs()) + len(child.outputs())
+        anchor = circuit.components[inst_idx].position
+        pins_with_net: list = []
+        for net in netlist.nets:
+            for pin in net.pins:
+                if pin.component_index == inst_idx and pin.direction == "unknown":
+                    d = abs(pin.x - anchor.x) + abs(pin.y - anchor.y)
+                    pins_with_net.append((d, pin, net))
+
+        if len(pins_with_net) <= cap:
+            continue
+        pins_with_net.sort(key=lambda t: (t[0], t[1].x, t[1].y))
+        for _, pin, net in pins_with_net[cap:]:
+            net.pins.remove(pin)
 
 def _resolve_subcircuit_directions(
     circuit: Circuit, netlist: NetList
@@ -386,8 +414,8 @@ def _resolve_subcircuit_directions(
     instance's implicit pins, using the child Circuit's In/Out elements as
     the port spec.
 
-    Limitation: position-only matching. Works for the common Digital
-    rendering convention (Ins on the left edge, Outs on the right). 
+    Limitation: Works for the common Digital rendering convention 
+    (Ins on the left edge, Outs on the right). 
     Edge cases (a child with bidirectional ports, or a layout
     Digital somehow renders differently) fall through unresolved and
     surface as warnings.
@@ -453,7 +481,7 @@ def build_netlist(circuit: Circuit) -> NetList:
         a = wire.p1.as_tuple()
         b = wire.p2.as_tuple()
         uf.union(a, b)
-        
+
     for a, x in _midpoint_branches(circuit):
         uf.union(a, x)
 

@@ -208,6 +208,59 @@ def test_subcircuit_one_implicit_pin_per_net():
     assert len(nets_with_sub) == len(sub_pins)
 
 
+# Subcircuit implicit-pin cap 
+
+TIER3_DIR = Path(__file__).parent.parent / "data" / "sample_circuits" / "tier3_realistic"
+
+
+def test_subcircuit_implicit_pin_count_capped_to_child_ports():
+    """
+    With IMPLICIT_PIN_RADIUS=500, a wide search can pull in unrelated
+    wire endpoints far from the instance anchor (observed in
+    tier3_calculator: bool_unit grabbed 6 pins for a 4-port child).
+    The cap drops the farthest extras so the count matches the child's
+    port count exactly.
+    """
+    c = parse_dig_file(str(TIER3_DIR / "tier3_calculator.dig"))
+    nl = build_netlist(c)
+    bu_idx = next(i for i, comp in enumerate(c.components)
+                  if comp.element_name == "bool_unit.dig")
+    child = c.subcircuits[next(
+        i for i, s in enumerate(c.subcircuits)
+        if s.reference == "bool_unit.dig"
+    )].child_circuit
+    expected_ports = len(child.inputs()) + len(child.outputs())
+    bu_pins = [p for net in nl.nets for p in net.pins
+               if p.component_index == bu_idx]
+    assert len(bu_pins) == expected_ports
+    pin_names = sorted(p.pin_name for p in bu_pins)
+    assert pin_names == ["A", "B", "LogSel", "Result"]
+
+
+def test_tier3_calculator_full_io_reachability():
+    from dlc.parser.graph import (
+        build_signal_graph,
+        input_component_indices,
+        output_component_indices,
+        reachable_outputs_from_inputs,
+    )
+    c = parse_dig_file(str(TIER3_DIR / "tier3_calculator.dig"))
+    nl = build_netlist(c)
+    g = build_signal_graph(c, nl)
+    in_idxs = input_component_indices(c)
+    out_idxs = set(output_component_indices(c))
+    reach = reachable_outputs_from_inputs(c, g)
+    for in_idx in in_idxs:
+        assert reach[in_idx] == out_idxs
+
+
+def test_tier3_bool_unit_fully_clean():
+    c = parse_dig_file(str(TIER3_DIR / "bool_unit.dig"))
+    nl = build_netlist(c)
+    assert sum(1 for n in nl.nets if n.pins and not n.drivers()) == 0
+    assert sum(1 for n in nl.nets if len(n.drivers()) > 1) == 0
+
+
 # Shared-endpoint behavior (multi-pin same coord)
 
 def test_two_pins_at_same_coord_share_net():
