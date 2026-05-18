@@ -46,10 +46,10 @@ def test_add_has_a_b_ci_s_co_pins():
     by_name = {spec.name: (pos.x, pos.y, spec.direction)
                for pos, spec in positions}
     assert by_name["a"] == (100, 100, "in")
-    assert by_name["b"] == (100, 140, "in")
     assert by_name["c_i"] == (100, 120, "in")
-    assert by_name["s"] == (180, 100, "out")
-    assert by_name["c_o"] == (180, 140, "out")
+    assert by_name["b"] == (100, 140, "in")
+    assert by_name["s"] == (160, 100, "out")
+    assert by_name["c_o"] == (160, 120, "out")
 
 
 def test_bitextender_has_in_and_out():
