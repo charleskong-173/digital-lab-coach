@@ -140,19 +140,30 @@ def _multiplexer_pins(comp: Component) -> list[PinSpec]:
     """
     Multiplexer. 'Selector Bits' = N → 2^N data inputs (absent = 1 → 2-to-1).
 
-      in_i at (0,  i * 40)           data inputs, 40-unit spacing
-      sel  at (20, (n_inputs-1)*40)  bottom-middle (under the last input)
-      out  at (40, (n_inputs-1)*40 // 2)  right-middle
+      n_inputs == 2 (sel_bits=1):
+        in_i at (0, i * 40)   
+        sel  at (20, 40)
+        out  at (40, 20)
+
+      n_inputs >= 4 (sel_bits >= 2):
+        in_i at (0, i * 20)   
+        sel  at (20, n_inputs * 20)
+        out  at (40, n_inputs * 10)
     """
     sel_bits = int(comp.attributes.get("Selector Bits", 1))
     n_inputs = 2 ** sel_bits
-    last_y = (n_inputs - 1) * 40
+    if n_inputs == 2:
+        spacing, sel_y, out_y = 40, 40, 20
+    else:
+        spacing = 20
+        sel_y = n_inputs * 20
+        out_y = n_inputs * 10
 
     pins: list[PinSpec] = []
     for i in range(n_inputs):
-        pins.append(PinSpec(f"in{i}", offset_x=0, offset_y=i * 40, direction="in"))
-    pins.append(PinSpec("sel", offset_x=20, offset_y=last_y, direction="in"))
-    pins.append(PinSpec("out", offset_x=40, offset_y=last_y // 2, direction="out"))
+        pins.append(PinSpec(f"in{i}", offset_x=0, offset_y=i * spacing, direction="in"))
+    pins.append(PinSpec("sel", offset_x=20, offset_y=sel_y, direction="in"))
+    pins.append(PinSpec("out", offset_x=40, offset_y=out_y, direction="out"))
     return pins
 
 
