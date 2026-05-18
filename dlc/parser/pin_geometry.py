@@ -235,18 +235,37 @@ def get_pin_specs(component: Component) -> list[PinSpec]:
 
     return []
 
+def _rotate(dx: int, dy: int, rotation: int) -> tuple[int, int]:
+    """
+    Rotate a (dx, dy) offset by `rotation` * 90 degrees clockwise (in
+    Digital's screen coordinates, y growing down). Digital stores
+    rotation as 0/1/2/3 in <rotation rotation="N"/>.
+    """
+    r = rotation % 4
+    if r == 0:
+        return (dx, dy)
+    if r == 1:
+        return (-dy, dx)
+    if r == 2:
+        return (-dx, -dy)
+    return (dy, -dx)  # r == 3
 
 def absolute_pin_positions(component: Component) -> list[tuple[Position, PinSpec]]:
     """
-    Return each pin's absolute canvas position plus its spec.
+    Return each pin's absolute canvas position plus its spec.Applies the
+    rotation attribute (if any) to the offsets before adding the anchor.
     Used for matching wire endpoints to pins.
     """
     pins = get_pin_specs(component)
+    rotation = component.attributes.get("rotation", 0)
+    if not isinstance(rotation, int):
+        rotation = 0
     result = []
     for pin in pins:
+        dx, dy = _rotate(pin.offset_x, pin.offset_y, rotation)
         absolute = Position(
-            x=component.position.x + pin.offset_x,
-            y=component.position.y + pin.offset_y,
+            x=component.position.x + dx,
+            y=component.position.y + dy,
         )
         result.append((absolute, pin))
     return result
