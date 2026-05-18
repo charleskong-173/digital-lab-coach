@@ -190,15 +190,22 @@ def _register_pins(comp: Component) -> list[PinSpec]:
 
 def _comparator_pins(comp: Component) -> list[PinSpec]:
     """
-    Comparator: A and B inputs left, greater/equal/less outputs right. 
-    (Not Verified for all cases yet)
+    Comparator: A and B inputs left, greater/equal/less outputs right.
+
+    Verified from comparator_4bit.dig and Lab 5 control-unit.dig:
+      Visual width = 60, so outputs sit at x=60.
+      A  at (0, 0)  in
+      B  at (0, 20) in
+      gr at (60, 0)  out
+      eq at (60, 20) out
+      le at (60, 40) out
     """
     return [
         PinSpec("A",  offset_x=0,  offset_y=0,  direction="in"),
         PinSpec("B",  offset_x=0,  offset_y=20, direction="in"),
-        PinSpec("gr", offset_x=80, offset_y=0,  direction="out"),
-        PinSpec("eq", offset_x=80, offset_y=20, direction="out"),
-        PinSpec("le", offset_x=80, offset_y=40, direction="out"),
+        PinSpec("gr", offset_x=60, offset_y=0,  direction="out"),
+        PinSpec("eq", offset_x=60, offset_y=20, direction="out"),
+        PinSpec("le", offset_x=60, offset_y=40, direction="out"),
     ]
 
 DYNAMIC_PIN_TABLE: dict[str, callable] = {

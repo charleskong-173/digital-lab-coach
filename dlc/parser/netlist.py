@@ -32,7 +32,7 @@ from dlc.parser.models import Circuit, Component, Wire
 from dlc.parser.pin_geometry import absolute_pin_positions
 
 
-PIN_SNAP_TOLERANCE = 40
+PIN_SNAP_TOLERANCE = 30
 IMPLICIT_PIN_RADIUS = 200
 NO_SIGNAL_ELEMENTS = {"Testcase", "Rectangle"}
 
@@ -252,7 +252,7 @@ def _attach_pins_endpoint_first(
             pin = _make_pin(c_idx, comp, spec, snapped)
             _attach_pin(netlist, pin, snapped, is_dangling=False)
             claimed_endpoints.add(snapped)
-        else:
+        elif spec.direction == "in" or spec.direction == "bidir":
             pin = _make_pin(c_idx, comp, spec, (px, py))
             _attach_pin(netlist, pin, (px, py), is_dangling=True)
     return claimed_endpoints
@@ -292,6 +292,7 @@ def _attach_implicit_pins(
     candidates = [
         (idx, comp) for idx, comp in enumerate(circuit.components)
         if not absolute_pin_positions(comp)
+        and comp.element_name not in NO_SIGNAL_ELEMENTS
     ]
     if not candidates:
         return
