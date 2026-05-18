@@ -141,6 +141,35 @@ def _collect_wire_endpoints(circuit: Circuit) -> set[tuple[int, int]]:
         eps.add(w.p2.as_tuple())
     return eps
 
+def _midpoint_branches(circuit: Circuit) -> list[tuple[tuple, tuple]]:
+    """
+    Detect T-junctions where one wire's endpoint lands on the interior
+    (strictly between p1 and p2) of another wire.
+    """
+    endpoints = _collect_wire_endpoints(circuit)
+    pairs: list[tuple[tuple, tuple]] = []
+    for w in circuit.wires:
+        a = w.p1.as_tuple()
+        b = w.p2.as_tuple()
+        if a == b:
+            continue
+        if a[1] == b[1]:
+            y = a[1]
+            x_lo, x_hi = (a[0], b[0]) if a[0] < b[0] else (b[0], a[0])
+            for ep in endpoints:
+                if ep == a or ep == b:
+                    continue
+                if ep[1] == y and x_lo < ep[0] < x_hi:
+                    pairs.append((a, ep))
+        elif a[0] == b[0]:
+            x = a[0]
+            y_lo, y_hi = (a[1], b[1]) if a[1] < b[1] else (b[1], a[1])
+            for ep in endpoints:
+                if ep == a or ep == b:
+                    continue
+                if ep[0] == x and y_lo < ep[1] < y_hi:
+                    pairs.append((a, ep))
+    return pairs
 
 def _all_predicted_pins(circuit: Circuit) -> list:
     """
@@ -424,6 +453,9 @@ def build_netlist(circuit: Circuit) -> NetList:
         a = wire.p1.as_tuple()
         b = wire.p2.as_tuple()
         uf.union(a, b)
+        
+    for a, x in _midpoint_branches(circuit):
+        uf.union(a, x)
 
     # Step 2: unify tunnel coords that share a NetName.
     tunnels_by_name: dict[str, list[tuple[int, int]]] = {}
