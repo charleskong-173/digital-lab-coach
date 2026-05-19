@@ -26,7 +26,7 @@ def _idx_by_element(circuit, element_name):
     return next(i for i, c in enumerate(circuit.components)
                 if c.element_name == element_name)
 
-
+# basic graph test
 
 def test_graph_builds_for_all_samples():
     """Graph builder must not crash, and every component is a node."""
@@ -140,7 +140,7 @@ def test_full_adder_full_reachability():
 
 def test_tier1_minimal_full_reachability():
     """
-    Every tier-1 happy-path sample must have all inputs reaching all
+    Every tier-1 sample must have all inputs reaching all
     outputs.
     """
     for f in glob.glob("data/sample_circuits/tier1_minimal/*.dig"):
@@ -171,3 +171,26 @@ def test_tier2_subcircuits_full_reachability():
             assert outs == out_idxs, (
                 f"{fname}: input {c.components[in_idx].label} "
                 f"reaches {outs}, expected {out_idxs}")
+            
+TIER3_DIR = Path(__file__).parent.parent / "data" / "sample_circuits" / "tier3_realistic"
+
+def test_tier3_calculator_full_reachability():
+    """
+    tier3_calculator: 4 Ins (A, B, Ci, Op) x 4 Outs (Result, Carry,
+    Zero, Bit0) = 16 input-output pairs, all reachable by design.
+    """
+    c = parse_dig_file(str(TIER3_DIR / "tier3_calculator.dig"))
+    nl = build_netlist(c)
+    g = build_signal_graph(c, nl)
+    reach = reachable_outputs_from_inputs(c, g)
+
+    expected_outs = {"Result", "Carry", "Zero", "Bit0"}
+    for in_idx, outs in reach.items():
+        in_lbl = c.components[in_idx].label
+        out_lbls = {c.components[i].label for i in outs}
+        assert out_lbls == expected_outs, (
+            f"Input {in_lbl} reaches {out_lbls}, expected {expected_outs}"
+        )
+
+    total_pairs = sum(len(v) for v in reach.values())
+    assert total_pairs == 16
