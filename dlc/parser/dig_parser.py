@@ -140,7 +140,7 @@ def _parse_with_cache(
     """
     abs_path = str(Path(path).resolve())
 
-    # Cycle detection: if we're already parsing this file higher up the stack,
+    # Cycle detection: if we're already parsing this file higher up the stack
     if abs_path in in_progress:
         raise ValueError(f"Circular subcircuit reference: {abs_path}")
 

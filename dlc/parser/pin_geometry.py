@@ -303,7 +303,7 @@ def _rotate(dx: int, dy: int, rotation: int) -> tuple[int, int]:
         return (dy, -dx)
     if r == 2:
         return (-dx, -dy)
-    return (-dy, dx)  # r == 3
+    return (-dy, dx)  
 
 def absolute_pin_positions(component: Component) -> list[tuple[Position, PinSpec]]:
     """

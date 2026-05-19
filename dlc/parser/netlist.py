@@ -16,7 +16,7 @@ Endpoint-primary design:
     2. Union tunnel coordinates that share a NetName.
     3. Materialize nets from union-find groups.
     4. For each wire endpoint, find its single closest predicted pin within
-       PIN_SNAP_TOLERANCE (Manhattan). This prevents one component from 
+       PIN_SNAP_TOLERANCE (Manhattan Distance). This prevents one component from 
        "stealing" an endpoint that actually belongs to a neighbor.
     5. For each predicted pin, the endpoint nearest to that pin becomes the 
        pin's actual coord; pins with no claimed endpoint are recorded as dangling 
